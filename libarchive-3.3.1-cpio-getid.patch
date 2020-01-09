@@ -1,0 +1,100 @@
+From 1bfa37818f5e6d8f4fe143084e81d0a102febcba Mon Sep 17 00:00:00 2001
+From: Pavel Raiskup <praiskup@redhat.com>
+Date: Mon, 20 Feb 2017 18:28:19 +0100
+Subject: [PATCH] bsdcpio: ignore ENOENT for get{grg,pwu}id()
+
+Starting from glibc 2.25, those calls set errno to ENOENT
+when the requested id is not found.  So let's stop throwing
+warning in this expected case.
+
+Also rework the api of lookup_* functions so it is guaranteed that
+lookup_name never returns NULL (unless ENOMEM).
+---
+ cpio/cpio.c | 46 ++++++++++++++++++++++------------------------
+ 1 file changed, 22 insertions(+), 24 deletions(-)
+
+diff --git a/cpio/cpio.c b/cpio/cpio.c
+index 6c20ee6..5961960 100644
+--- a/cpio/cpio.c
++++ b/cpio/cpio.c
+@@ -1344,23 +1344,23 @@ lookup_name(struct cpio *cpio, struct name_cache **name_cache_variable,
+ 		cache->cache[slot].name = NULL;
+ 	}
+ 
+-	if (lookup_fn(cpio, &name, id) == 0) {
+-		if (name == NULL || name[0] == '\0') {
+-			/* If lookup failed, format it as a number. */
+-			snprintf(asnum, sizeof(asnum), "%u", (unsigned)id);
+-			name = asnum;
+-		}
+-		cache->cache[slot].name = strdup(name);
+-		if (cache->cache[slot].name != NULL) {
+-			cache->cache[slot].id = id;
+-			return (cache->cache[slot].name);
+-		}
+-		/*
+-		 * Conveniently, NULL marks an empty slot, so
+-		 * if the strdup() fails, we've just failed to
+-		 * cache it.  No recovery necessary.
+-		 */
++	if (lookup_fn(cpio, &name, id)) {
++		/* If lookup failed, format it as a number. */
++		snprintf(asnum, sizeof(asnum), "%u", (unsigned)id);
++		name = asnum;
+ 	}
++
++	cache->cache[slot].name = strdup(name);
++	if (cache->cache[slot].name != NULL) {
++		cache->cache[slot].id = id;
++		return (cache->cache[slot].name);
++	}
++
++	/*
++	 * Conveniently, NULL marks an empty slot, so
++	 * if the strdup() fails, we've just failed to
++	 * cache it.  No recovery necessary.
++	 */
+ 	return (NULL);
+ }
+ 
+@@ -1381,15 +1381,14 @@ lookup_uname_helper(struct cpio *cpio, const char **name, id_t id)
+ 	errno = 0;
+ 	pwent = getpwuid((uid_t)id);
+ 	if (pwent == NULL) {
+-		*name = NULL;
+-		if (errno != 0 && errno != ENOENT)
++		if (errno && errno != ENOENT)
+ 			lafe_warnc(errno, "getpwuid(%s) failed",
+ 			    cpio_i64toa((int64_t)id));
+-		return (errno);
++		return 1;
+ 	}
+ 
+ 	*name = pwent->pw_name;
+-	return (0);
++	return 0;
+ }
+ 
+ static const char *
+@@ -1409,15 +1408,14 @@ lookup_gname_helper(struct cpio *cpio, const char **name, id_t id)
+ 	errno = 0;
+ 	grent = getgrgid((gid_t)id);
+ 	if (grent == NULL) {
+-		*name = NULL;
+-		if (errno != 0)
++		if (errno && errno != ENOENT)
+ 			lafe_warnc(errno, "getgrgid(%s) failed",
+ 			    cpio_i64toa((int64_t)id));
+-		return (errno);
++		return 1;
+ 	}
+ 
+ 	*name = grent->gr_name;
+-	return (0);
++	return 0;
+ }
+ 
+ /*
+-- 
+2.9.3
+

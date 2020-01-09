@@ -1,0 +1,11 @@
+--- CMakeLists.orig.txt	2016-06-20 05:30:48.000000000 +0200
++++ CMakeLists.txt	2016-07-26 22:19:34.986094094 +0200
+@@ -68,7 +68,7 @@
+ # libarchive 2.9 == interface version 11 = 2 + 9
+ # libarchive 3.0 == interface version 12
+ # libarchive 3.1 == interface version 13
+-math(EXPR INTERFACE_VERSION  "13 + ${_minor}")
++math(EXPR INTERFACE_VERSION  "11 + ${_minor}")
+ 
+ # Set SOVERSION == Interface version
+ # ?? Should there be more here ??
